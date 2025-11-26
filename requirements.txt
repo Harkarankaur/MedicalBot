@@ -1,0 +1,16 @@
+streamlit
+langchain
+langchain-community
+langchain-openai
+openai
+python-dotenv
+fastapi
+uvicorn
+psycopg2-binary
+langchain-experimental
+pandas
+httpx
+faker
+requests
+pydantic
+sqlparse

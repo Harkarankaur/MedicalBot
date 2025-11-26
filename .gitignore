@@ -1,0 +1,12 @@
+# Python virtual environment
+venv/
+
+# Node modules
+medical-bot-ui/node_modules/
+
+# Backend environment files
+backend/.env
+backend/.env.*
+backend/__pycache__/
+__pycache__/
+*.pyc

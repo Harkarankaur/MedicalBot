@@ -1,0 +1,164 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #ffffff;
+  color: #222;
+  overflow: hidden; /* important for loops */
+}
+
+.center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.fullpage {
+  height: 100vh;
+  background: #ffffff;
+}
+
+.chat-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:  #ffffff;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.input-area {
+  display: flex;
+  padding: 10px;
+  background: #f5f5f5;   
+  border-top: 1px solid #e5e5e5;
+}
+
+.input-area input {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ccc;
+  outline: none;
+  border-radius: 5px;
+  margin-right: 10px;
+  background: #ffffff;
+}
+
+.send-btn, .mic-btn {
+  background: #2563eb;   /* Blue buttons */
+  padding: 10px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: none;
+  color: white;
+  font-weight: 600;
+}
+
+.mic-btn {
+  background: #10b981;   /* Green mic button */
+}
+
+.bot {
+  background: #e5e7eb;   /* Light grey bubble */
+  color: #111;
+  padding: 10px 14px;
+  border-radius: 8px;
+  display: inline-block;
+  margin-bottom: 10px;
+  max-width: 70%;
+}
+
+.user {
+  background: #2563eb;   /* Blue user bubble */
+  color: white;
+  padding: 10px 14px;
+  border-radius: 8px;
+  display: inline-block;
+  margin-bottom: 10px;
+  align-self: flex-end;
+  max-width: 70%;
+}
+
+/* ======= Medical Equipment Loops ======= */
+.loop {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  font-size: 28px;
+}
+
+/* Top loop moves left */
+.top-loop {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 40px;
+}
+.top-loop .loop-content {
+  display: inline-block;
+  white-space: nowrap;
+  animation: scrollTop 12s linear infinite;
+}
+
+/* Right loop moves up */
+.right-loop {
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 100%;
+}
+.right-loop .loop-content-vertical {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  animation: scrollRight 14s linear infinite;
+}
+
+/* Bottom loop moves right */
+.bottom-loop {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 40px;
+}
+.bottom-loop .loop-content {
+  display: inline-block;
+  white-space: nowrap;
+  animation: scrollBottom 12s linear infinite;
+}
+
+/* Left loop moves down */
+.left-loop {
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 100%;
+}
+.left-loop .loop-content-vertical {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  animation: scrollLeft 14s linear infinite;
+}
+
+/* ======== Keyframes for anticlockwise movement ======== */
+@keyframes scrollTop {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); } /* left */
+}
+
+@keyframes scrollRight {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); } /* up */
+}
+
+@keyframes scrollBottom {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); } /* right */
+}
+
+@keyframes scrollLeft {
+  0% { transform: translateY(-50%); }
+  100% { transform: translateY(0); } /* down */
+}
