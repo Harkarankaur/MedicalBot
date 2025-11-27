@@ -4,7 +4,7 @@ import {
 } 
 from "lucide-react";
 
-type Message = { sender: string; text: string; time: string };
+type Message = { sender: string; text: string; time: string ;route?: string};
 type Chat = { id: number; title: string; messages: Message[] };
 type UserProfile = { name: string; email: string; id: string };
 
@@ -23,11 +23,18 @@ export default function MedicalBotUI() {
   const [headerSearchValue, setHeaderSearchValue] = useState("");
   const searchRef = useRef<any>(null);
 
-  const [userProfile] = useState<UserProfile>({
-    name: "John Doe",
-    email: "john@example.com",
-    id: "USR123456",
-  });
+  // const [userProfile] = useState<UserProfile>({
+  //   name: "John Doe",
+  //   email: "john@example.com",
+  //   id: "USR123456",
+  // });
+
+  // ✅ NEW - loads from localStorage
+const [userProfile, setUserProfile] = useState<UserProfile>({
+  name: localStorage.getItem("username") || "Guest",
+  email: localStorage.getItem("email") || "No email",
+  id: localStorage.getItem("password") ? "Authenticated" : "Not logged in", // Hide password, show status
+});
 
   const recognitionRef = useRef<any>(null);
   const endRef = useRef<any>(null);
@@ -38,7 +45,35 @@ export default function MedicalBotUI() {
 
   
   /* -------------------- EFFECTS -------------------- */
+  function getHighlightedText(text: string, highlight: string) {
+    if (!highlight) return text;
+    const regex = new RegExp(`(${highlight})`, "gi");
+    const parts = text.split(regex);
+    return (
+      <span>
+        {parts.map((part, i) =>
+          part.toLowerCase() === highlight.toLowerCase() ? (
+            <span key={i} style={{ backgroundColor: "yellow" }}>
+              {part}
+            </span>
+          ) : (
+            part
+          )
+        )}
+      </span>
+    );
+  }
 
+  useEffect(() => {
+  // Load real signup data
+  const username = localStorage.getItem("username") || "Guest";
+  const email = localStorage.getItem("email") || "No email set";
+  setUserProfile({
+    name: username,
+    email: email,
+    id: localStorage.getItem("password") ? "Active User" : "Not logged in",
+  });
+}, []);
   useEffect(() => {
     const handleResize = () => setSidebarOpen(window.innerWidth > 768);
     window.addEventListener("resize", handleResize);
@@ -149,6 +184,7 @@ const addBotReply = async (chatId: number, userText: string) => {
         hour: "2-digit",
         minute: "2-digit",
       }),
+      route: data.route
     };
 
     setChats((prevChats) =>
@@ -483,7 +519,7 @@ const addBotReply = async (chatId: number, userText: string) => {
               textAlign: "center",
             }}
           >
-            <h3>User ID</h3>
+            <h3> {userProfile.name}</h3>
             <p>{userProfile.id}</p>
             <button
               style={{
@@ -521,25 +557,12 @@ const addBotReply = async (chatId: number, userText: string) => {
             }}
           >
             <h3>User Profile</h3>
-            <p>Name: {userProfile.name}</p>
-            <p>Email: {userProfile.email}</p>
-            <p>User ID: {userProfile.id}</p>
+            <p><strong>Username:</strong> {userProfile.name}</p>
+            <p><strong>Email:</strong> {userProfile.email}</p>
+            <p><strong>Status:</strong> {userProfile.id}</p>
 
             <div style={{ margin: "10px 0" }}>
-              {theme === "light" ? (
-                <button
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    border: "none",
-                    cursor: "pointer",
-                    background: "#f3f4f6",
-                  }}
-                  onClick={() => setTheme("dark")}
-                >
-                  Dark Mode
-                </button>
-              ) : (
+              {theme === "light" ?  (
                 <button
                   style={{
                     padding: "6px 12px",
@@ -551,34 +574,78 @@ const addBotReply = async (chatId: number, userText: string) => {
                   }}
                   onClick={() => setTheme("light")}
                 >
+                  Dark Mode
+                </button>
+              ):(
+                <button
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    cursor: "pointer",
+                    background: "#f3f4f6",
+                  }}
+                  onClick={() => setTheme("dark")}
+                >
                   Light Mode
                 </button>
-              )}
+                
+              ) }
             </div>
-
             <button
               style={{
-                marginTop: 10,
-                padding: "8px 16px",
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    cursor: "pointer",
+                    background: "#f3f4f6",
+                }}
+              onClick={() => {
+              if (window.confirm("Are you sure you want to delete all chat history?")) {
+              setChats([]);
+              setActiveChat(null);
+              setShowSettings(false);
+              }
+              }}
+              >
+              Delete History
+              </button>
+
+            {/* Logout */}
+            <button
+              style={{
+                display: "block",
+                width: "100%",
+                marginTop: "10px auto 0",
+                padding: "10px 16px",
                 borderRadius: 20,
                 border: "none",
                 cursor: "pointer",
-                background: "#2563eb",
-                color: "#fff",
+                background: "#0f0101ff",
+                color: "#f9f4f4ff",
+                
+
+
               }}
-              onClick={() => alert("Logged out")}
+              onClick={() => {
+    localStorage.clear(); // ✅ Clears ALL signup data
+    setUserProfile({ name: "Guest", email: "No email", id: "Not logged in" });
+    alert("Logged out - all data cleared!");
+  }}
             >
               Logout
             </button>
 
+            {/* Close */}
             <button
               style={{
-                marginTop: 10,
-                padding: "8px 16px",
+                display: "block",
+                width: "100%",marginTop: 10,
+                padding: "10px 16px",
                 borderRadius: 20,
                 border: "none",
                 cursor: "pointer",
-                background: "#555",
+                background: "#464ef0ff",
                 color: "#fff",
               }}
               onClick={() => setShowSettings(false)}
@@ -705,7 +772,6 @@ const addBotReply = async (chatId: number, userText: string) => {
       : true
   )
   .map((msg, i) => {
-    const isMultiLine = msg.text.includes("\n");
 
     return (
       <div
@@ -718,42 +784,30 @@ const addBotReply = async (chatId: number, userText: string) => {
           marginBottom: "6px",
         }}
       >
- {msg.sender === "bot" ? (() => {
+
+{msg.sender === "bot" ? (() => {
   const lines = msg.text.split("\n");
-  const delimiters = /[,\-\/]/; // comma, dash, or slash
+  const delimiters = /[,]/; // comma, dash, or slash
+  const delimiter = /[-]/;
+  const delimiteer = /[\-\/*():]/;
   const isMultiLine = lines.length > 1;
-  const anyLineHasMultipleColumns = lines.some(line => line.split(delimiters).length > 1);
-  const isSingleLineMultipleColumns = !isMultiLine && msg.text.split(delimiters).length > 1;
-  const isParagraphLike = msg.text.length > 100 || msg.text.split(' ').length > 10;
-  if (isParagraphLike && isMultiLine && anyLineHasMultipleColumns) {
-    // Single line multiple columns -> table with single column rows
-    return (
-    <div
-      style={{
-        background:  theme === "light" ? "#E5E7EB" : "#30363D",
-        color:  textColor,
-        padding: "10px 12px",
-        borderRadius: "12px",
-        maxWidth: "70%",
-        whiteSpace: "pre-wrap",
-        boxShadow: theme === "light" ? "0 1px 2px rgba(0,0,0,0.1)" : "0 1px 2px rgba(0,0,0,0.5)",
-      }}
-    >
-      {msg.text}
-    </div>
+  const anyLineHasMultipleColumns = lines.some(line => line.split(delimiter).length > 1);
+  const isSingleLineMultipleColumns = !isMultiLine && msg.text.split(delimiters).length > 2;
+  const hasMultiLineDelimiters = lines.some(line => 
+    (line.match(delimiteer) || []).length > 0
   );
-  }
-  if (isMultiLine && anyLineHasMultipleColumns && !isParagraphLike) {
+  if (isMultiLine && anyLineHasMultipleColumns ) {
     // Multi-line with delimiters -> table
     const rowColumns = lines.map(line =>
-      line.split(delimiters).map(cell => cell.trim())
+      line.split(delimiter).map(cell => cell.trim())
     );
     const maxCols = Math.max(...rowColumns.map(cols => cols.length));
     return (
       <div style={{
-        width: "100%",
-        maxWidth: "600px",
-        height: "300px",
+        width: "auto",
+        height:"auto",
+        maxWidth: "800px",
+        maxHeight: "600px",
         overflowX: "auto",
         overflowY: "auto",
         border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
@@ -804,6 +858,24 @@ const addBotReply = async (chatId: number, userText: string) => {
       </div>
     )
   }
+  if (isMultiLine && hasMultiLineDelimiters ) {
+  // Always render messages from "rag" route as bubbles
+  return (
+    <div
+      style={{
+        background: theme === "light" ? "#E5E7EB" : "#30363D",
+        color: textColor,
+        padding: "10px 12px",
+        borderRadius: "12px",
+        maxWidth: "70%",
+        whiteSpace: "pre-wrap",
+        boxShadow: theme === "light" ? "0 1px 2px rgba(0,0,0,0.1)" : "0 1px 2px rgba(0,0,0,0.5)",
+      }}
+    >
+      {getHighlightedText(msg.text, headerSearchValue)}
+    </div>
+  );
+}
   if (isSingleLineMultipleColumns) {
     // Single line multiple columns -> table with single column rows
     const rows = msg.text.split(delimiters).map(cell => cell.trim());
@@ -862,7 +934,7 @@ const addBotReply = async (chatId: number, userText: string) => {
         boxShadow: theme === "light" ? "0 1px 2px rgba(0,0,0,0.1)" : "0 1px 2px rgba(0,0,0,0.5)",
       }}
     >
-      {msg.text}
+      {getHighlightedText(msg.text, headerSearchValue)}
     </div>
   );
 })() : (
@@ -879,7 +951,7 @@ const addBotReply = async (chatId: number, userText: string) => {
       alignSelf: "flex-end",
     }}
   >
-    {msg.text}
+    {getHighlightedText(msg.text, headerSearchValue)}
   </div>
 )}
 
@@ -974,3 +1046,6 @@ const addBotReply = async (chatId: number, userText: string) => {
     </div>
   );
 }
+
+
+

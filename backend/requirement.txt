@@ -14,7 +14,7 @@ faker
 requests
 pydantic
 langchain>=0.1.20
-
+faiss
 langchain-community
 
 sqlparse
