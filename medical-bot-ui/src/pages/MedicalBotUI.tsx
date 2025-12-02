@@ -7,6 +7,25 @@ from "lucide-react";
 type Message = { sender: string; text: string; time: string ;route?: string};
 type Chat = { id: number; title: string; messages: Message[] };
 type UserProfile = { name: string; email: string; id: string };
+type SearchHistory = { query: string; timestamp: string };
+
+type TableData = {
+  columns: string[];
+  values: (string | number)[][];
+};
+
+// type AIResponse = {
+//   chat_id?: string;
+//   result: string;
+//   data: TableData[];
+// };
+
+type AIResponse = {
+  chat_id?: string;
+  result: string;
+  data: TableData[];
+  route: string;   // ← ADD THIS
+};
 
 export default function MedicalBotUI() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -18,18 +37,20 @@ export default function MedicalBotUI() {
   const [showAccount, setShowAccount] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
+  // 🔹 new: search history state
+  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
+
   /* ---------------- HEADER SEARCH STATES ---------------- */
   const [headerSearchOpen, setHeaderSearchOpen] = useState(false);
   const [headerSearchValue, setHeaderSearchValue] = useState("");
   const searchRef = useRef<any>(null);
 
-  // const [userProfile] = useState<UserProfile>({
-  //   name: "John Doe",
-  //   email: "john@example.com",
-  //   id: "USR123456",
+  // // 🔹 change: we now have setUserProfile and default values
+  // const [userProfile, setUserProfile] = useState<UserProfile>({
+  //   name: "Guest",
+  //   email: "No email set",
+  //   id: "Not logged in",
   // });
-
-  // ✅ NEW - loads from localStorage
 const [userProfile, setUserProfile] = useState<UserProfile>({
   name: localStorage.getItem("username") || "Guest",
   email: localStorage.getItem("email") || "No email",
@@ -41,6 +62,51 @@ const [userProfile, setUserProfile] = useState<UserProfile>({
 
   const currentChat = chats.find((c) => c.id === activeChat);
   const [botProcessing, setBotProcessing] = useState(false);
+  const [currentRoute, setCurrentRoute] = useState<string | null>(null);
+
+/* ---------------- PERSISTENCE FUNCTIONS ---------------- */
+
+  const CHAT_HISTORY_KEY = `chatHistory_${userProfile.email}`;
+  const saveChatHistory = (updatedChats: Chat[]) => {
+    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(updatedChats.slice(0, 20))); // Limit to 20 chats
+  };
+  const loadChatHistory = (): Chat[] => {
+    try {
+      return JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || '[]');
+    } catch {
+      return [];
+    }
+  };
+  /* -------------------- EFFECTS -------------------- */
+
+  useEffect(() => {
+    // Load chat history on mount
+    const history = loadChatHistory();
+    setChats(history);
+    // Load user profile
+    const username = localStorage.getItem("username") || "Guest";
+    const email = localStorage.getItem("email") || "No email set";
+    const storedId = localStorage.getItem("userId");
+    if (email && username) {
+      setUserProfile({
+        name: username,
+        email: email,
+        id: storedId || "User",
+      });
+
+      // Load that user's chat history
+      const history = JSON.parse(
+        localStorage.getItem(`chatHistory_${email}`) || "[]"
+      );
+      setChats(history);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (chats.length > 0) {
+      saveChatHistory(chats);
+    }
+  }, [chats]);
 
 
   
@@ -63,6 +129,32 @@ const [userProfile, setUserProfile] = useState<UserProfile>({
       </span>
     );
   }
+ /* -------------------- CHAT FUNCTIONS -------------------- */
+ useEffect(() => {
+    const username = localStorage.getItem("username") || "Guest";
+    const email = localStorage.getItem("email") || "No email";
+    const userId = localStorage.getItem("userId") || "Not logged in";
+
+    setUserProfile({
+      name: username,
+      email: email,
+      id: userId,
+    });
+
+    // Load appropriate chat history for this user
+    const history = JSON.parse(
+      localStorage.getItem(`chatHistory_${email}`) || "[]"
+    );
+    setChats(history);
+  }, []);
+
+  // Save chat history when chats change
+  useEffect(() => {
+    if (chats.length > 0) {
+      saveChatHistory(chats);
+    }
+  }, [chats]);
+ /* -------------------- FUNCTIONS -------------------- */
 
   useEffect(() => {
   // Load real signup data
@@ -81,7 +173,7 @@ const [userProfile, setUserProfile] = useState<UserProfile>({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  /* Close header search when clicking outside */
+    /* Close header search when clicking outside */
   useEffect(() => {
     function handleClickOutside(e: any) {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
@@ -93,6 +185,20 @@ const [userProfile, setUserProfile] = useState<UserProfile>({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // 🔹 Load user profile + search history on mount
+  useEffect(() => {
+    const username = localStorage.getItem("username") || "Guest";
+    const email = localStorage.getItem("email") || "No email set";
+
+    setUserProfile({
+      name: username,
+      email: email,
+      id: localStorage.getItem("password") ? "Active User" : "Not logged in",
+    });
+
+    loadSearchHistory();
+  }, []);
+
   useEffect(() => {
     speechSynthesis.cancel();
     const msg = new SpeechSynthesisUtterance("How can I help you?");
@@ -101,9 +207,45 @@ const [userProfile, setUserProfile] = useState<UserProfile>({
     return () => speechSynthesis.cancel();
   }, []);
 
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [currentChat?.messages, botProcessing]);
+
+
+
+  /* ---------------- SEARCH HISTORY FUNCTIONS ---------------- */
+
+  const saveSearchToDB = async (query: string) => {
+    if (!query.trim()) return;
+
+    try {
+      const userEmail = localStorage.getItem("email") || "guest";
+      await fetch("http://localhost:8000/save-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: query.trim(), user_email: userEmail }),
+      });
+    } catch (err) {
+      console.error("Failed to save search:", err);
+    }
+  };
+
+  const loadSearchHistory = async () => {
+    try {
+      const userEmail = localStorage.getItem("email") || "guest";
+      const res = await fetch(
+        `http://localhost:8000/load-search-history?user_email=${userEmail}`
+      );
+      if (!res.ok) return;
+      const history: SearchHistory[] = await res.json();
+      setSearchHistory(history);
+    } catch (err) {
+      console.error("Failed to load search history:", err);
+    }
+  };
+
+
 
   /* -------------------- CHAT FUNCTIONS -------------------- */
 
@@ -171,21 +313,42 @@ const addBotReply = async (chatId: number, userText: string) => {
     const res = await fetch("http://localhost:8000/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // 👇 send the text we got from sendMessage
-      body: JSON.stringify({ message: userText }),
-    });
+      body: JSON.stringify({
+        message: userText,
+        chat_id: String(chatId),
+        username: userProfile.name,   
+        email: userProfile.email
+    }),
+  });
 
-    const data = await res.json();
-
+    const data: AIResponse = await res.json();
+    console.log("Adding bot message with route:", data.route, "text:", data.result);
     const botMsg: Message = {
       sender: "bot",
-      text: data.reply,
+      text: data.result, 
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       }),
-      route: data.route
+      route: data.route || "DEFAULT_AGENT", 
     };
+    console.log("AI Response from backend:", data);
+    console.log("Bot message with route:", botMsg);
+
+    setCurrentRoute(data.route|| "DEFAULT_AGENT");
+
+//     setChats((prev) =>
+//       prev.map((chat) =>
+//         chat.id === chatId
+//           ? { ...chat, messages: [...chat.messages, botMsg] }
+//           : chat
+//       )
+//     );
+//   } catch (err) {
+//     console.error("Error adding bot reply:", err);
+//   }
+// };
+
 
     setChats((prevChats) =>
       prevChats.map((c) =>
@@ -328,13 +491,22 @@ const addBotReply = async (chatId: number, userText: string) => {
               <SquarePen size={18} /> New Chat
             </button>
 
-            <input
+              <input
               type="text"
               placeholder="Search chats..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value.toLowerCase())}
+              onChange={(e) => {
+                const value = e.target.value.toLowerCase();
+                setSearchQuery(value);
+
+                // 🔹 Save to DB when user types 3+ chars
+                if (value.trim().length > 2) {
+                  saveSearchToDB(value);
+                }
+              }}
               style={inputStyle}
             />
+
 
             {/* Search dropdown */}
             {searchQuery && (
@@ -381,7 +553,9 @@ const addBotReply = async (chatId: number, userText: string) => {
             >
               Your Chats...
             </div>
+            
 
+            
             {/* Chat History */}
             <div
               style={{
@@ -393,7 +567,51 @@ const addBotReply = async (chatId: number, userText: string) => {
                 flexDirection: "column",
                 gap: "6px",
               }}
-            >
+            > {/* Recent search history */}
+{searchHistory.length > 0 && (
+  <div
+    style={{
+      marginTop: "5px",
+      padding: "0 10px",
+      maxHeight: "120px",
+      overflowY: "auto",
+      fontSize: "13px",
+    }}
+  >
+    <div
+      style={{
+        fontSize: "12px",
+        opacity: 0.7,
+        marginBottom: "4px",
+      }}
+    >
+      Recent searches
+    </div>
+
+    {searchHistory.map((item, idx) => (
+      <div
+        key={idx}
+        style={{
+          padding: "4px 0",
+          borderBottom: `1px solid ${borderColor}`,
+          cursor: "pointer",
+        }}
+        onClick={() => setSearchQuery(item.query.toLowerCase())}
+      >
+        <div>{item.query}</div>
+        <div
+          style={{
+            fontSize: "11px",
+            opacity: 0.6,
+          }}
+        >
+          {item.timestamp}
+        </div>
+      </div>
+    ))}
+  </div>
+)}
+
               {chats.map((chat) => (
                 <div
                   key={chat.id}
@@ -519,7 +737,7 @@ const addBotReply = async (chatId: number, userText: string) => {
               textAlign: "center",
             }}
           >
-            <h3> {userProfile.name}</h3>
+            <h3>User ID</h3>
             <p>{userProfile.id}</p>
             <button
               style={{
@@ -557,9 +775,9 @@ const addBotReply = async (chatId: number, userText: string) => {
             }}
           >
             <h3>User Profile</h3>
-            <p><strong>Username:</strong> {userProfile.name}</p>
-            <p><strong>Email:</strong> {userProfile.email}</p>
-            <p><strong>Status:</strong> {userProfile.id}</p>
+            <p>Name: {userProfile.name}</p>
+            <p>Email: {userProfile.email}</p>
+            <p>User ID: {userProfile.id}</p>
 
             <div style={{ margin: "10px 0" }}>
               {theme === "light" ?  (
@@ -627,11 +845,7 @@ const addBotReply = async (chatId: number, userText: string) => {
 
 
               }}
-              onClick={() => {
-    localStorage.clear(); // ✅ Clears ALL signup data
-    setUserProfile({ name: "Guest", email: "No email", id: "Not logged in" });
-    alert("Logged out - all data cleared!");
-  }}
+              onClick={() => alert("Logged out")}
             >
               Logout
             </button>
@@ -681,6 +895,11 @@ const addBotReply = async (chatId: number, userText: string) => {
               >
                 <PlusCircle size={20} /> Medicare
               </div>
+{currentRoute && (
+    <div style={{ fontSize: "12px", color: theme === "light" ? "#555" : "#aaa" }}>
+      Route: <strong>{currentRoute}</strong>
+    </div>
+  )}
 
               {/* HEADER SEARCH + ACCOUNT ICONS */}
               <div
@@ -784,7 +1003,7 @@ const addBotReply = async (chatId: number, userText: string) => {
           marginBottom: "6px",
         }}
       >
-
+{/* 
 {msg.sender === "bot" ? (() => {
   const lines = msg.text.split("\n");
   const delimiters = /[,]/; // comma, dash, or slash
@@ -792,11 +1011,11 @@ const addBotReply = async (chatId: number, userText: string) => {
   const delimiteer = /[\-\/*():]/;
   const isMultiLine = lines.length > 1;
   const anyLineHasMultipleColumns = lines.some(line => line.split(delimiter).length > 1);
-  const isSingleLineMultipleColumns = !isMultiLine && msg.text.split(delimiters).length > 2;
+  const isSingleLineMultipleColumns = !isMultiLine && msg.text.split(delimiters).length >= 3;
   const hasMultiLineDelimiters = lines.some(line => 
     (line.match(delimiteer) || []).length > 0
   );
-  if (isMultiLine && anyLineHasMultipleColumns ) {
+  if (isMultiLine && anyLineHasMultipleColumns  ) {
     // Multi-line with delimiters -> table
     const rowColumns = lines.map(line =>
       line.split(delimiter).map(cell => cell.trim())
@@ -967,8 +1186,159 @@ const addBotReply = async (chatId: number, userText: string) => {
         </div>
       </div>
     );
-  })}
+  })} */}
+{msg.sender === "bot" ? (() => {
+  const routeDisplay = msg.route ? (
+    <div style={{ fontSize: "10px", color: theme === "light" ? "#555" : "#aaa", marginBottom: "4px" }}>
+      Route: {msg.route}
+    </div>
+  ) : null;
+  // 1. Always bubble for RAG_AGENT or OTHER_AGENT
+  if (msg.route === "RAG_AGENT" || msg.route === "OTHER_AGENT") {
+    return (
+      <div
+        style={{
+          background: theme === "light" ? "#E5E7EB" : "#30363D",
+          color: textColor,
+          padding: "10px 12px",
+          borderRadius: "12px",
+          maxWidth: "70%",
+          whiteSpace: "pre-wrap",
+          boxShadow: theme === "light"
+            ? "0 1px 2px rgba(0,0,0,0.1)"
+            : "0 1px 2px rgba(0,0,0,0.5)",
+        }}
+      >
+        {routeDisplay}
+        {getHighlightedText(msg.text, headerSearchValue)}
+      </div>
+    );
+  }
 
+  // 2. TABLE FORMAT ONLY FOR TEXT2SQL_AGENT
+  if (msg.route === "TEXT2SQL_AGENT") {
+    const lines = msg.text.split("\n").filter(l => l.trim() !== "");
+    const rows = lines.map(line => line.split("|").map(c => c.trim()));
+    const maxCols = Math.max(...rows.map(r => r.length));
+
+    return (
+      <div style={{
+        width: "auto",
+        maxWidth: "800px",
+        maxHeight: "600px",
+        overflowX: "auto",
+        overflowY: "auto",
+        border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
+        borderRadius: "8px",
+        boxShadow: theme === "light"
+          ? "0 1px 3px rgba(0,0,0,0.1)"
+          : "0 2px 6px rgba(0,0,0,0.7)"
+      }}>
+        <table style={{
+          width: "100%",
+          borderCollapse: "collapse"
+        }}>
+          <thead style={{
+            background: theme === "light" ? "#2563EB" : "#111827",
+            color: "white"
+          }}>
+            <tr>
+              <th style={{ padding: "8px 12px" }}>SNo.</th>
+              {Array.from({ length: maxCols }).map((_, index) => (
+                <th key={index} style={{ padding: "8px 12px" }}>
+                  Column {index + 1}
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((cols, rowIndex) => (
+              <tr
+                key={rowIndex}
+                style={{
+                  background:
+                    rowIndex % 2 === 0
+                      ? theme === "light"
+                        ? "#F3F4F6"
+                        : "#1E1E2A"
+                      : "transparent",
+                  border: theme === "light"
+                    ? "1px solid #D1D5DB"
+                    : "1px solid #3F3F46",
+                  color: theme === "light" ? "#111" : "#E6EDF3"
+                }}
+              >
+                <td style={{ padding: "8px 12px" }}>{rowIndex + 1}</td>
+
+                {Array.from({ length: maxCols }).map((_, colIndex) => (
+                  <td
+                    key={colIndex}
+                    style={{
+                      padding: "8px 12px",
+                      wordBreak: "break-word"
+                    }}
+                  >
+                    {cols[colIndex] || ""}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  // 3. DEFAULT → bubble  
+  return (
+    <div
+      style={{
+        background: theme === "light" ? "#E5E7EB" : "#30363D",
+        color: textColor,
+        padding: "10px 12px",
+        borderRadius: "12px",
+        maxWidth: "70%",
+        whiteSpace: "pre-wrap",
+        boxShadow: theme === "light"
+          ? "0 1px 2px rgba(0,0,0,0.1)"
+          : "0 1px 2px rgba(0,0,0,0.5)",
+      }}
+    >
+      {routeDisplay}
+      {getHighlightedText(msg.text, headerSearchValue)}
+    </div>
+  );
+
+})() : (
+  /* USER MESSAGE */
+  <div
+    style={{
+      background: "#2563EB",
+      color: "#fff",
+      padding: "10px 12px",
+      borderRadius: "12px",
+      maxWidth: "70%",
+      whiteSpace: "pre-wrap",
+      alignSelf: "flex-end",
+    }}
+  >
+    {getHighlightedText(msg.text, headerSearchValue)}
+  </div>
+)}
+
+        <div
+          style={{
+            fontSize: "12px",
+            color: theme === "light" ? "#555" : "#9ca3af",
+            marginTop: "2px",
+          }}
+        >
+          {msg.time}
+        </div>
+      </div>
+    );
+  })}
               {botProcessing && (
                 <div
                   style={{
@@ -1046,6 +1416,3 @@ const addBotReply = async (chatId: number, userText: string) => {
     </div>
   );
 }
-
-
-
