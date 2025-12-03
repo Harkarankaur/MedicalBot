@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  SendHorizonal,Mic,PlusCircle,Sun,Moon,Menu,Search,SquarePen,Settings,User,Copy,ThumbsUp,ThumbsDown,Share2,Clock,
+  SendHorizonal,Mic,PlusCircle,Sun,Moon,Menu,Search,SquarePen,Settings,User,
 } 
 from "lucide-react";
 
-type Message = { sender: string; text: string; time: string ;route?: string};
+type Message = { sender: string; text: string; time: string ;route?: string;tableData?: TableData[]};
 type Chat = { id: number; title: string; messages: Message[] };
 type UserProfile = { name: string; email: string; id: string };
 type SearchHistory = { query: string; timestamp: string };
@@ -13,12 +13,6 @@ type TableData = {
   columns: string[];
   values: (string | number)[][];
 };
-
-// type AIResponse = {
-//   chat_id?: string;
-//   result: string;
-//   data: TableData[];
-// };
 
 type AIResponse = {
   chat_id?: string;
@@ -323,6 +317,8 @@ const addBotReply = async (chatId: number, userText: string) => {
 
     const data: AIResponse = await res.json();
     console.log("Adding bot message with route:", data.route, "text:", data.result);
+    console.log("RAW Backend Response:", data);
+
     const botMsg: Message = {
       sender: "bot",
       text: data.result, 
@@ -331,6 +327,7 @@ const addBotReply = async (chatId: number, userText: string) => {
         minute: "2-digit",
       }),
       route: data.route || "DEFAULT_AGENT", 
+      tableData: data.data || [],
     };
     console.log("AI Response from backend:", data);
     console.log("Bot message with route:", botMsg);
@@ -895,11 +892,7 @@ const addBotReply = async (chatId: number, userText: string) => {
               >
                 <PlusCircle size={20} /> Medicare
               </div>
-{currentRoute && (
-    <div style={{ fontSize: "12px", color: theme === "light" ? "#555" : "#aaa" }}>
-      Route: <strong>{currentRoute}</strong>
-    </div>
-  )}
+
 
               {/* HEADER SEARCH + ACCOUNT ICONS */}
               <div
@@ -1003,190 +996,7 @@ const addBotReply = async (chatId: number, userText: string) => {
           marginBottom: "6px",
         }}
       >
-{/* 
-{msg.sender === "bot" ? (() => {
-  const lines = msg.text.split("\n");
-  const delimiters = /[,]/; // comma, dash, or slash
-  const delimiter = /[-]/;
-  const delimiteer = /[\-\/*():]/;
-  const isMultiLine = lines.length > 1;
-  const anyLineHasMultipleColumns = lines.some(line => line.split(delimiter).length > 1);
-  const isSingleLineMultipleColumns = !isMultiLine && msg.text.split(delimiters).length >= 3;
-  const hasMultiLineDelimiters = lines.some(line => 
-    (line.match(delimiteer) || []).length > 0
-  );
-  if (isMultiLine && anyLineHasMultipleColumns  ) {
-    // Multi-line with delimiters -> table
-    const rowColumns = lines.map(line =>
-      line.split(delimiter).map(cell => cell.trim())
-    );
-    const maxCols = Math.max(...rowColumns.map(cols => cols.length));
-    return (
-      <div style={{
-        width: "auto",
-        height:"auto",
-        maxWidth: "800px",
-        maxHeight: "600px",
-        overflowX: "auto",
-        overflowY: "auto",
-        border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
-        borderRadius: "8px",
-        boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
-      }}>
-        <table style={{
-          borderCollapse: "collapse",
-          borderSpacing: "0",
-          tableLayout: "auto",
-          width: "100%",
-          maxWidth: "max-content",
-          borderRadius: "8px",
-          overflow: "hidden",
-          boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
-        }}>
-          <thead style={{ background: theme === "light" ? "#2563EB" : "#111827", color: "#fff" }}>
-            <tr>
-              <th style={{ padding: "8px 12px", textAlign: "center" }}>SNo.</th>
-              {Array.from({ length: maxCols }).map((_, idx) => (
-                <th key={idx} style={{ padding: "8px 12px" }}>{`Column ${idx + 1}`}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rowColumns.map((cols, idx) => (
-              <tr key={idx}
-                style={{
-                  padding: "8px 12px",
-                  textAlign: "center",
-                  background: idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1E1E2A") : "transparent",
-                  color: theme === "light" ? "#111" : "#E6EDF3",
-                  border: theme === "light" ? "1px solid #D1D5DB" : "1px solid #3F3F46"
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = theme === "light" ? "#DBEAFE" : "#2C2C31"}
-                onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1C1F26") : "transparent"}
-              >
-                <td style={{ padding: "8px 12px" }}>{idx + 1}</td>
-                {Array.from({ length: maxCols }).map((_, cidx) => (
-                  <td key={cidx} style={{ padding: "8px 12px", wordBreak: "break-word", textAlign: "left" }}>
-                    {cols[cidx] || ""}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-  if (isMultiLine && hasMultiLineDelimiters ) {
-  // Always render messages from "rag" route as bubbles
-  return (
-    <div
-      style={{
-        background: theme === "light" ? "#E5E7EB" : "#30363D",
-        color: textColor,
-        padding: "10px 12px",
-        borderRadius: "12px",
-        maxWidth: "70%",
-        whiteSpace: "pre-wrap",
-        boxShadow: theme === "light" ? "0 1px 2px rgba(0,0,0,0.1)" : "0 1px 2px rgba(0,0,0,0.5)",
-      }}
-    >
-      {getHighlightedText(msg.text, headerSearchValue)}
-    </div>
-  );
-}
-  if (isSingleLineMultipleColumns) {
-    // Single line multiple columns -> table with single column rows
-    const rows = msg.text.split(delimiters).map(cell => cell.trim());
-    return (
-      <div style={{
-        width: "100%",
-        maxWidth: "600px",
-        height: "300px",
-        overflowY: "auto",
-        border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
-        borderRadius: "8px",
-        boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
-      }}>
-        <table style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          borderSpacing: 0,
-          boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
-        }}>
-          <thead style={{ background: theme === "light" ? "#2563EB" : "#111827", color: "#fff" }}>
-            <tr>
-              <th style={{ padding: "8px 12px", textAlign: "center" }}>SNo.</th>
-              <th style={{ padding: "8px 12px" }}>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((cell, idx) => (
-              <tr key={idx}
-                style={{
-                  background: idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1E1E2A") : "transparent",
-                  color: theme === "light" ? "#111" : "#E6EDF3",
-                  border: theme === "light" ? "1px solid #D1D5DB" : "1px solid #3F3F46"
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = theme === "light" ? "#DBEAFE" : "#2C2C31"}
-                onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1C1F26") : "transparent"}
-              >
-                <td style={{ padding: "8px 12px", textAlign: "center" }}>{idx + 1}</td>
-                <td style={{ padding: "8px 12px", wordBreak: "break-word" }}>{cell}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-  // Else normal message bubble
-  return (
-    <div
-      style={{
-        background:  theme === "light" ? "#E5E7EB" : "#30363D",
-        color:  textColor,
-        padding: "10px 12px",
-        borderRadius: "12px",
-        maxWidth: "70%",
-        whiteSpace: "pre-wrap",
-        boxShadow: theme === "light" ? "0 1px 2px rgba(0,0,0,0.1)" : "0 1px 2px rgba(0,0,0,0.5)",
-      }}
-    >
-      {getHighlightedText(msg.text, headerSearchValue)}
-    </div>
-  );
-})() : (
-  // user message rendering
-  <div
-    style={{
-      background: "#2563EB",
-      color: "#fff",
-      padding: "10px 12px",
-      borderRadius: "12px",
-      maxWidth: "70%",
-      whiteSpace: "pre-wrap",
-      boxShadow: theme === "light" ? "0 1px 2px rgba(0,0,0,0.1)" : "0 1px 2px rgba(0,0,0,0.5)",
-      alignSelf: "flex-end",
-    }}
-  >
-    {getHighlightedText(msg.text, headerSearchValue)}
-  </div>
-)}
 
-
-        <div
-          style={{
-            fontSize: "12px",
-            color: theme === "light" ? "#555" : "#9ca3af",
-            marginTop: "2px",
-          }}
-        >
-          {msg.time}
-        </div>
-      </div>
-    );
-  })} */}
 {msg.sender === "bot" ? (() => {
   const routeDisplay = msg.route ? (
     <div style={{ fontSize: "10px", color: theme === "light" ? "#555" : "#aaa", marginBottom: "4px" }}>
@@ -1209,51 +1019,256 @@ const addBotReply = async (chatId: number, userText: string) => {
             : "0 1px 2px rgba(0,0,0,0.5)",
         }}
       >
-        {routeDisplay}
+        
         {getHighlightedText(msg.text, headerSearchValue)}
       </div>
     );
   }
+// /* --- TEXT2SQL_AGENT → Single-line with comma-separated values → Render as 1-column table --- */
+// if (
+//   msg.route === "TEXT2SQL_AGENT" &&
+//   (!msg.tableData || msg.tableData.length === 0) &&
+//   msg.text &&
+//   !msg.text.includes("\n") &&        // single line
+//   msg.text.split(",").length > 1     // multiple comma-separated parts
+// ) {
+//   const items = msg.text.split(",").map((item) => item.trim());
 
-  // 2. TABLE FORMAT ONLY FOR TEXT2SQL_AGENT
-  if (msg.route === "TEXT2SQL_AGENT") {
-    const lines = msg.text.split("\n").filter(l => l.trim() !== "");
-    const rows = lines.map(line => line.split("|").map(c => c.trim()));
-    const maxCols = Math.max(...rows.map(r => r.length));
+//   return (
+//     <div
+//       style={{
+//         width: "auto",
+//         maxWidth: "400px",
+//         overflowX: "auto",
+//         marginBottom: "20px",
+//         border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
+//         borderRadius: "8px",
+//         padding: "6px",
+//         background: theme === "light" ? "#fff" : "#1E1E2A",
+//       }}
+//     >
+//       <table
+//         style={{
+//           width: "100%",
+//           borderCollapse: "collapse",
+//           borderSpacing: 0,
+//         }}
+//       >
+//         <thead
+//           style={{
+//             background: theme === "light" ? "#2563EB" : "#111827",
+//             color: "#fff",
+//           }}
+//         >
+//           <tr>
+//             <th style={{ padding: "8px 12px" }}>SNo.</th>
+//             <th style={{ padding: "8px 12px" }}>Details</th>
+//           </tr>
+//         </thead>
 
-    return (
-      <div style={{
-        width: "auto",
-        maxWidth: "800px",
-        maxHeight: "600px",
-        overflowX: "auto",
+//         <tbody>
+//           {items.map((item, idx) => (
+//             <tr
+//               key={idx}
+//               style={{
+//                 background:
+//                   idx % 2 === 0
+//                     ? theme === "light"
+//                       ? "#F3F4F6"
+//                       : "#2A2F3A"
+//                     : "transparent",
+//                 color: theme === "light" ? "#111" : "#E6EDF3",
+//                 borderBottom:
+//                   theme === "light"
+//                     ? "1px solid #ddd"
+//                     : "1px solid #333",
+//               }}
+//             >
+//               <td style={{ padding: "8px 12px" }}>{idx + 1}</td>
+//               <td
+//                 style={{
+//                   padding: "8px 12px",
+//                   wordBreak: "break-word",
+//                   whiteSpace: "pre-wrap",
+//                 }}
+//               >
+//                 {item}
+//               </td>
+//             </tr>
+//           ))}
+//         </tbody>
+//       </table>
+//     </div>
+//   );
+// }
+/* --- TEXT2SQL_AGENT → Single-line comma values → 1-column scrollable table --- */
+if (
+  msg.route === "TEXT2SQL_AGENT" &&
+  (!msg.tableData || msg.tableData.length === 0) &&
+  msg.text &&
+  !msg.text.includes("\n") &&
+  msg.text.split(",").length > 1
+) {
+  const items = msg.text.split(",").map((item) => item.trim());
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "500px",
+        height: "280px",             // fixed height → scrollbar
         overflowY: "auto",
+        overflowX: "hidden",
         border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
         borderRadius: "8px",
-        boxShadow: theme === "light"
-          ? "0 1px 3px rgba(0,0,0,0.1)"
-          : "0 2px 6px rgba(0,0,0,0.7)"
-      }}>
-        <table style={{
+        padding: "6px",
+        background: theme === "light" ? "#fff" : "#1E1E2A",
+        boxShadow:
+          theme === "light"
+            ? "0 1px 3px rgba(0,0,0,0.1)"
+            : "0 2px 6px rgba(0,0,0,0.7)",
+      }}
+    >
+      <table
+        style={{
           width: "100%",
-          borderCollapse: "collapse"
-        }}>
-          <thead style={{
+          borderCollapse: "collapse",
+          borderSpacing: 0,
+        }}
+      >
+        <thead
+          style={{
             background: theme === "light" ? "#2563EB" : "#111827",
-            color: "white"
-          }}>
+            color: "#fff",
+            position: "sticky",
+            top: 0,
+            zIndex: 2,
+          }}
+        >
+          <tr>
+            <th style={{ padding: "8px 12px" }}>SNo.</th>
+            <th style={{ padding: "8px 12px" }}>Details</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {items.map((item, idx) => (
+            <tr
+              key={idx}
+              style={{
+                background:
+                  idx % 2 === 0
+                    ? theme === "light"
+                      ? "#F3F4F6"
+                      : "#1E1E2A"
+                    : "transparent",
+                color: theme === "light" ? "#111" : "#E6EDF3",
+                borderBottom:
+                  theme === "light"
+                    ? "1px solid #D1D5DB"
+                    : "1px solid #3F3F46",
+                transition: "background 0.2s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background =
+                  theme === "light" ? "#DBEAFE" : "#2C2C31")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background =
+                  idx % 2 === 0
+                    ? theme === "light"
+                      ? "#F3F4F6"
+                      : "#1E1E2A"
+                    : "transparent")
+              }
+            >
+              <td style={{ padding: "8px 12px" }}>{idx + 1}</td>
+              <td
+                style={{
+                  padding: "8px 12px",
+                  wordBreak: "break-word",
+                }}
+              >
+                {item}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* --- TEXT2SQL_AGENT → Plain string response (bubble) --- */
+if (msg.route === "TEXT2SQL_AGENT" && (!msg.tableData || msg.tableData.length === 0)) {
+  return (
+    <div
+      className={`chat-bubble bot-bubble`}
+      style={{
+        maxWidth: "80%",
+        padding: "12px 16px",
+        borderRadius: "12px",
+        margin: "8px 0",
+        background: theme === "light" ? "#E5E7EB" : "#374151",
+        color: theme === "light" ? "#111" : "#fff",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      {msg.text}
+    </div>
+  );
+}
+
+  /* --- TEXT2SQL_AGENT → Render Real TableData from Backend --- */
+if (msg.route === "TEXT2SQL_AGENT" && Array.isArray(msg.tableData)) {
+  return msg.tableData.map((table, tableIndex) => {
+    const columns = table.columns || [];
+    const rows = table.values || [];
+
+    return (
+      <div
+        key={tableIndex}
+        style={{
+          width: "auto",
+          maxWidth: "800px",
+          maxHeight: "500px",
+          overflowX: "auto",
+          overflowY: "auto",
+          marginBottom: "20px",
+          border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
+          borderRadius: "8px",
+          padding: "6px",
+          background: theme === "light" ? "#fff" : "#1E1E2A",
+        }}
+      >
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            borderSpacing: 0,
+          }}
+        >
+          {/* HEADER */}
+          <thead
+            style={{
+              background: theme === "light" ? "#2563EB" : "#111827",
+              color: "#fff",
+            }}
+          >
             <tr>
               <th style={{ padding: "8px 12px" }}>SNo.</th>
-              {Array.from({ length: maxCols }).map((_, index) => (
-                <th key={index} style={{ padding: "8px 12px" }}>
-                  Column {index + 1}
+
+              {columns.map((col, idx) => (
+                <th key={idx} style={{ padding: "8px 12px" }}>
+                  {col}
                 </th>
               ))}
             </tr>
           </thead>
 
+          {/* BODY */}
           <tbody>
-            {rows.map((cols, rowIndex) => (
+            {rows.map((row, rowIndex) => (
               <tr
                 key={rowIndex}
                 style={{
@@ -1261,25 +1276,27 @@ const addBotReply = async (chatId: number, userText: string) => {
                     rowIndex % 2 === 0
                       ? theme === "light"
                         ? "#F3F4F6"
-                        : "#1E1E2A"
+                        : "#2A2F3A"
                       : "transparent",
-                  border: theme === "light"
-                    ? "1px solid #D1D5DB"
-                    : "1px solid #3F3F46",
-                  color: theme === "light" ? "#111" : "#E6EDF3"
+                  color: theme === "light" ? "#111" : "#E6EDF3",
+                  borderBottom:
+                    theme === "light"
+                      ? "1px solid #ddd"
+                      : "1px solid #333",
                 }}
               >
                 <td style={{ padding: "8px 12px" }}>{rowIndex + 1}</td>
 
-                {Array.from({ length: maxCols }).map((_, colIndex) => (
+                {row.map((cell, colIdx) => (
                   <td
-                    key={colIndex}
+                    key={colIdx}
                     style={{
                       padding: "8px 12px",
-                      wordBreak: "break-word"
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-wrap",
                     }}
                   >
-                    {cols[colIndex] || ""}
+                    {String(cell)}
                   </td>
                 ))}
               </tr>
@@ -1288,7 +1305,217 @@ const addBotReply = async (chatId: number, userText: string) => {
         </table>
       </div>
     );
-  }
+  });
+}
+
+
+  // // 2. TABLE FORMAT ONLY FOR TEXT2SQL_AGENT
+  // if (msg.route === "TEXT2SQL_AGENT") {
+  //   const delimiter = /[-]/;
+  //   const delimiters = /[,]/; // comma, dash, or slash
+  //   const lines = msg.text.split("\n").filter(l => l.trim() !== "");
+  //   const rows = lines.map(line => line.split("|-").map(c => c.trim()));
+  //   const maxCols = Math.max(...rows.map(r => r.length));
+  //   const isSingleLineMultipleColumns =msg.text.split(delimiters).length >= 3;
+  //   const isSingleLine = !msg.text.includes("\n");
+  //   const isMultiLine = lines.length > 1;
+  //   const anyLineHasMultipleColumns = lines.some(line => line.split(delimiter).length > 1);
+  // if (isMultiLine && anyLineHasMultipleColumns  ) {
+  //   // Multi-line with delimiters -> table
+  //   const rowColumns = lines.map(line =>
+  //     line.split(delimiter).map(cell => cell.trim())
+  //   );
+  //   const maxCols = Math.max(...rowColumns.map(cols => cols.length));
+  //   return (
+  //     <div style={{
+  //       width: "auto",
+  //       height:"auto",
+  //       maxWidth: "800px",
+  //       maxHeight: "600px",
+  //       overflowX: "auto",
+  //       overflowY: "auto",
+  //       border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
+  //       borderRadius: "8px",
+  //       boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
+  //     }}>
+  //       <table style={{
+  //         borderCollapse: "collapse",
+  //         borderSpacing: "0",
+  //         tableLayout: "auto",
+  //         width: "100%",
+  //         maxWidth: "max-content",
+  //         borderRadius: "8px",
+  //         overflow: "hidden",
+  //         boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
+  //       }}>
+  //         <thead style={{ background: theme === "light" ? "#2563EB" : "#111827", color: "#fff" }}>
+  //           <tr>
+  //             <th style={{ padding: "8px 12px", textAlign: "center" }}>SNo.</th>
+  //             {Array.from({ length: maxCols }).map((_, idx) => (
+  //               <th key={idx} style={{ padding: "8px 12px" }}>{`Column ${idx + 1}`}</th>
+  //             ))}
+  //           </tr>
+  //         </thead>
+  //         <tbody>
+  //           {rowColumns.map((cols, idx) => (
+  //             <tr key={idx}
+  //               style={{
+  //                 padding: "8px 12px",
+  //                 textAlign: "center",
+  //                 background: idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1E1E2A") : "transparent",
+  //                 color: theme === "light" ? "#111" : "#E6EDF3",
+  //                 border: theme === "light" ? "1px solid #D1D5DB" : "1px solid #3F3F46"
+  //               }}
+  //               onMouseEnter={e => e.currentTarget.style.background = theme === "light" ? "#DBEAFE" : "#2C2C31"}
+  //               onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1C1F26") : "transparent"}
+  //             >
+  //               <td style={{ padding: "8px 12px" }}>{idx + 1}</td>
+  //               {Array.from({ length: maxCols }).map((_, cidx) => (
+  //                 <td key={cidx} style={{ padding: "8px 12px", wordBreak: "break-word", textAlign: "left" }}>
+  //                   {cols[cidx] || ""}
+  //                 </td>
+  //               ))}
+  //             </tr>
+  //           ))}
+  //         </tbody>
+  //       </table>
+  //     </div>
+  //   )
+  // }
+
+  //   if (isSingleLine) {
+  //   return (
+  //     <div
+  //       style={{
+  //         background: theme === "light" ? "#E5E7EB" : "#30363D",
+  //         color: textColor,
+  //         padding: "10px 12px",
+  //         borderRadius: "12px",
+  //         maxWidth: "70%",
+  //         whiteSpace: "pre-wrap",
+  //         boxShadow: theme === "light"
+  //           ? "0 1px 2px rgba(0,0,0,0.1)"
+  //           : "0 1px 2px rgba(0,0,0,0.5)",
+  //       }}
+  //     >
+  //       {msg.text}
+  //     </div>
+  //   );
+  // }
+    
+  //   if (isSingleLineMultipleColumns) {
+  //   // Single line multiple columns -> table with single column rows
+  //   const rows = msg.text.split(delimiters).map(cell => cell.trim());
+  //   return (
+  //     <div style={{
+  //       width: "100%",
+  //       maxWidth: "600px",
+  //       height: "300px",
+  //       overflowY: "auto",
+  //       border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
+  //       borderRadius: "8px",
+  //       boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
+  //     }}>
+  //       <table style={{
+  //         width: "100%",
+  //         borderCollapse: "collapse",
+  //         borderSpacing: 0,
+  //         boxShadow: theme === "light" ? "0 1px 3px rgba(0,0,0,0.1)" : "0 2px 6px rgba(0,0,0,0.7)"
+  //       }}>
+  //         <thead style={{ background: theme === "light" ? "#2563EB" : "#111827", color: "#fff" }}>
+  //           <tr>
+  //             <th style={{ padding: "8px 12px", textAlign: "center" }}>SNo.</th>
+  //             <th style={{ padding: "8px 12px" }}>Details</th>
+  //           </tr>
+  //         </thead>
+  //         <tbody>
+  //           {rows.map((cell, idx) => (
+  //             <tr key={idx}
+  //               style={{
+  //                 background: idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1E1E2A") : "transparent",
+  //                 color: theme === "light" ? "#111" : "#E6EDF3",
+  //                 border: theme === "light" ? "1px solid #D1D5DB" : "1px solid #3F3F46"
+  //               }}
+  //               onMouseEnter={e => e.currentTarget.style.background = theme === "light" ? "#DBEAFE" : "#2C2C31"}
+  //               onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? (theme === "light" ? "#F3F4F6" : "#1C1F26") : "transparent"}
+  //             >
+  //               <td style={{ padding: "8px 12px", textAlign: "center" }}>{idx + 1}</td>
+  //               <td style={{ padding: "8px 12px", wordBreak: "break-word" }}>{cell}</td>
+  //             </tr>
+  //           ))}
+  //         </tbody>
+  //       </table>
+  //     </div>
+  //   )
+  // }
+  //   return (
+  //     <div style={{
+  //       width: "auto",
+  //       maxWidth: "800px",
+  //       maxHeight: "600px",
+  //       overflowX: "auto",
+  //       overflowY: "auto",
+  //       border: theme === "light" ? "1px solid #ccc" : "1px solid #444",
+  //       borderRadius: "8px",
+  //       boxShadow: theme === "light"
+  //         ? "0 1px 3px rgba(0,0,0,0.1)"
+  //         : "0 2px 6px rgba(0,0,0,0.7)"
+  //     }}>
+  //       <table style={{
+  //         width: "100%",
+  //         borderCollapse: "collapse"
+  //       }}>
+  //         <thead style={{
+  //           background: theme === "light" ? "#2563EB" : "#111827",
+  //           color: "white"
+  //         }}>
+  //           <tr>
+  //             <th style={{ padding: "8px 12px" }}>SNo.</th>
+  //             {Array.from({ length: maxCols }).map((_, index) => (
+  //               <th key={index} style={{ padding: "8px 12px" }}>
+  //                 Column {index + 1}
+  //               </th>
+  //             ))}
+  //           </tr>
+  //         </thead>
+
+  //         <tbody>
+  //           {rows.map((cols, rowIndex) => (
+  //             <tr
+  //               key={rowIndex}
+  //               style={{
+  //                 background:
+  //                   rowIndex % 2 === 0
+  //                     ? theme === "light"
+  //                       ? "#F3F4F6"
+  //                       : "#1E1E2A"
+  //                     : "transparent",
+  //                 border: theme === "light"
+  //                   ? "1px solid #D1D5DB"
+  //                   : "1px solid #3F3F46",
+  //                 color: theme === "light" ? "#111" : "#E6EDF3"
+  //               }}
+  //             >
+  //               <td style={{ padding: "8px 12px" }}>{rowIndex + 1}</td>
+
+  //               {Array.from({ length: maxCols }).map((_, colIndex) => (
+  //                 <td
+  //                   key={colIndex}
+  //                   style={{
+  //                     padding: "8px 12px",
+  //                     wordBreak: "break-word"
+  //                   }}
+  //                 >
+  //                   {cols[colIndex] || ""}
+  //                 </td>
+  //               ))}
+  //             </tr>
+  //           ))}
+  //         </tbody>
+  //       </table>
+  //     </div>
+  //   );
+  // }
 
   // 3. DEFAULT → bubble  
   return (
@@ -1305,7 +1532,7 @@ const addBotReply = async (chatId: number, userText: string) => {
           : "0 1px 2px rgba(0,0,0,0.5)",
       }}
     >
-      {routeDisplay}
+    
       {getHighlightedText(msg.text, headerSearchValue)}
     </div>
   );
