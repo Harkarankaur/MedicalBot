@@ -151,7 +151,13 @@ class ChatMessage(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, server_default=sql_text("CURRENT_TIMESTAMP"))
 
+# Insert this definition near the top of hospital_backend.py,
+# right after your other Pydantic models (e.g., ChatResponse)
 
+class TableData(BaseModel):
+    """Schema for structured table data to be sent to the UI."""
+    columns: List[str] = Field(description="List of column names for the table.")
+    values: List[List[str]] = Field(description="List of rows, where each row is a list of string values.")
 class ChatContext(Base):
     __tablename__ = "chat_context"
 
@@ -298,18 +304,55 @@ def infer_entity_and_ids(
 
 
 
+# def build_table_from_sql(sql_query: str):
+#     """
+#     Execute a SELECT SQL query and convert the result into
+#     { "columns": [...], "values": [[...], ...] }.
+#     Returns None if SQL is empty / not SELECT / execution fails.
+#     """
+#     if not sql_query:
+#         return None
+
+#     normalized = sql_query.strip().lower()
+#     if not normalized.startswith("select"):
+#         # We only build table data for SELECT queries
+#         return None
+
+#     try:
+#         engine = get_sql_engine()
+#         with engine.connect() as conn:
+#             result = conn.execute(sql_text(sql_query))
+#             rows = result.fetchall()
+#             columns = list(result.keys())
+#     except SQLAlchemyError as e:
+#         print(f"[FastAPI/Text2SQL] Error executing SQL for table data: {e}")
+#         return None
+#     except Exception as e:
+#         print(f"[FastAPI/Text2SQL] Unexpected error executing SQL for table data: {e}")
+#         return None
+
+#     # Convert every row to a list of strings so JSON is clean
+#     values = [[str(cell) for cell in row] for row in rows]
+#     return {"columns": columns, "values": values}
+
+
 def build_table_from_sql(sql_query: str):
     """
-    Execute a SELECT SQL query and convert the result into
-    { "columns": [...], "values": [[...], ...] }.
-    Returns None if SQL is empty / not SELECT / execution fails.
+    Execute a SELECT SQL query and convert result to proper structured table:
+    {
+        "columns": [...],
+        "values": [...]
+    }
+    Also auto-splits single-column rows like:
+        "Christopher Cain - 2020-02-06"
+    into:
+        ["Christopher Cain", "2020-02-06"]
     """
     if not sql_query:
         return None
 
     normalized = sql_query.strip().lower()
     if not normalized.startswith("select"):
-        # We only build table data for SELECT queries
         return None
 
     try:
@@ -318,16 +361,48 @@ def build_table_from_sql(sql_query: str):
             result = conn.execute(sql_text(sql_query))
             rows = result.fetchall()
             columns = list(result.keys())
-    except SQLAlchemyError as e:
-        print(f"[FastAPI/Text2SQL] Error executing SQL for table data: {e}")
-        return None
     except Exception as e:
-        print(f"[FastAPI/Text2SQL] Unexpected error executing SQL for table data: {e}")
+        print("[FastAPI/Text2SQL] Error executing SQL:", e)
         return None
 
-    # Convert every row to a list of strings so JSON is clean
-    values = [[str(cell) for cell in row] for row in rows]
-    return {"columns": columns, "values": values}
+    # ----------- CASE 1: Proper SQL table returned -----------
+    if len(columns) > 1:
+        # Convert rows normally
+        values = [[str(c) for c in row] for row in rows]
+        return {"columns": columns, "values": values}
+
+    # ----------- CASE 2: Only ONE column returned -----------
+    # Try to split into two meaningful fields
+    if len(columns) == 1:
+        col = columns[0]
+        split_values = []
+        auto_columns = ["Value1", "Value2"]   # Default split column names
+
+        for row in rows:
+            raw = str(row[0])
+
+            # Split on "-" into 2 parts (Name - Date)
+            parts = [p.strip() for p in raw.split("-")]
+            if len(parts) == 2:
+                # ["Christopher Cain", "2020-02-06"]
+                split_values.append(parts)
+            else:
+                # If cannot split, keep original in first column only
+                split_values.append([raw])
+
+        # Decide columns based on split result
+        if all(len(v) == 2 for v in split_values):
+            return {
+                "columns": ["Name", "BirthDate"],
+                "values": split_values
+            }
+        else:
+            return {
+                "columns": [col],
+                "values": [[str(r[0])] for r in rows]
+            }
+
+    return None
 
 
 def get_llm() -> ChatOpenAI:
@@ -376,6 +451,8 @@ GENERAL RULES (VERY IMPORTANT):
       NOT: Action Input: "patients"
     - Use: Action Input: SELECT COUNT(*) FROM patients;
       NOT: Action Input: "SELECT COUNT(*) FROM patients;"
+- You MUST ALWAYS produce a SQL query for database questions.
+- Do NOT answer directly in natural language unless explicitly asked.
 
 ----------------------------------------------------------------------
 APPOINTMENT QUERIES (use appointments.encounter_date):
@@ -560,7 +637,7 @@ Rules:
         toolkit=toolkit,
         verbose=True,
         prefix=sql_prefix,
-        handle_parsing_errors=True
+        #handle_parsing_errors=True
     )
     return agent
 
@@ -597,11 +674,26 @@ def ask_text2sql_question(agent, question: str) -> SQLQueryResult:
 
     # Try to reconstruct the SQL query from intermediate_steps
     thoughts = result.get("intermediate_steps", [])
+    # sql_query = ""
+    # for step in thoughts:
+    #     action = step[0]
+    #     if hasattr(action, "tool") and action.tool == "sql_db_query":
+    #         sql_query = action.tool_input
     sql_query = ""
+
     for step in thoughts:
         action = step[0]
+
+    # 1) Directly from action
         if hasattr(action, "tool") and action.tool == "sql_db_query":
-            sql_query = action.tool_input
+            sql_query = getattr(action, "tool_input", "")
+            continue
+
+    # 2) If action is dict-like (newer LC versions)
+        if isinstance(action, dict):
+            if action.get("tool") == "sql_db_query":
+                sql_query = action.get("tool_input", "")
+                continue
 
     return SQLQueryResult(
         question=question,
@@ -1075,7 +1167,90 @@ def _clean_list_style_answer(text: str) -> str:
 from typing import List  # already imported at line 688
 
 # ...
+import re
 
+def _parse_list_to_table_data(cleaned_text: str) -> dict:
+    """
+    Parse ANY text format → Perfect multi-column table!
+    ✅ Protects dates like "2020-03-05" from splitting!
+    ✅ FIXED: Only creates columns based on REAL data rows!
+    """
+    lines = cleaned_text.strip().split('\n')
+    
+    # Filter headers/empty lines
+    data_lines = [
+        line.strip() 
+        for line in lines 
+        if line.strip() and not (
+            line.strip().lower().startswith('the names of') or 
+            line.strip().lower().startswith('a list of') or 
+            line.strip().lower().endswith(':')
+        )
+    ]
+    
+    if not data_lines:
+        return {"columns": ["Value"], "values": [[cleaned_text]]}
+
+    # 🔧 SMART PARSING WITH DATE PROTECTION
+    parsed_rows = []
+    max_cols = 0
+    
+    for line in data_lines:
+        clean_line = line.strip('- ').strip()
+        
+        # ✅ STEP 1: Find dates FIRST (protect them)
+        dates = re.findall(r'\b\d{4}-\d{2}-\d{2}\b', clean_line)
+        
+        # ✅ STEP 2: Split remaining text (excluding protected dates)
+        non_date_parts = []
+        last_end = 0
+        
+        for date in dates:
+            # Add text before date
+            before = clean_line[last_end:clean_line.find(date, last_end)].strip('- ').strip()
+            if before:
+                non_date_parts.extend([p.strip() for p in before.split('-') if p.strip()])
+            
+            # Add protected date as single part
+            non_date_parts.append(date)
+            last_end = clean_line.find(date, last_end) + len(date)
+        
+        # Add remaining text after last date
+        after = clean_line[last_end:].strip('- ').strip()
+        if after:
+            non_date_parts.extend([p.strip() for p in after.split('-') if p.strip()])
+        
+        # Remove empty parts
+        parts = [p for p in non_date_parts if p.strip()]
+        
+        if parts:
+            parsed_rows.append(parts)
+            max_cols = max(max_cols, len(parts))
+    
+    if not parsed_rows:
+        return {"columns": ["Value"], "values": [[line] for line in data_lines]}
+
+    # Pad shorter rows
+    parsed_rows = [row + [""] * (max_cols - len(row)) for row in parsed_rows]
+
+    # ✅ SMART COLUMN NAMES
+    columns = ["patientname"]
+    if max_cols > 1 and any(re.match(r'\d{4}-\d{2}-\d{2}', row[1]) for row in parsed_rows[:3]):
+        columns.append("birth_date")
+    else:
+        columns.append("column_2")
+    
+    if max_cols > 2:
+        columns.append("address")
+    for i in range(3, max_cols):
+        columns.append(f"column_{i+1}")
+
+    return {
+        "columns": columns,
+        "values": parsed_rows
+    }
+
+#jflgjhawiurhgo
 def answer_hospital_query(user_q: str, chat_id: Optional[str] = None) -> "ChatResponse":
     """Single entry point used by the FastAPI backend for each user query."""
     _ensure_fastapi_agents_ready()
@@ -1129,18 +1304,65 @@ def answer_hospital_query(user_q: str, chat_id: Optional[str] = None) -> "ChatRe
         try:
             sql_result = ask_text2sql_question(_text2sql_agent_fastapi, augmented_q)
             # sql_result is SQLQueryResult(question, sql_query, final_answer)
-            print(sql_result)
-            table_dict = build_table_from_sql(sql_result.sql_query)
-            print(table_dict)
-            tables: List[TableData] = []
-            if table_dict is not None:
-                tables.append(TableData(**table_dict))
+            print("RAW SQL RESULT OBJECT:", sql_result)
+            print("SQL QUERY:", sql_result.sql_query)
+            final_answer = _clean_list_style_answer(sql_result.final_answer)
+            # --- NEW: Single-line or Multi-line decision ---
+            answer_lines = [line.strip() for line in final_answer.split("\n") if line.strip()]
 
+# If ONLY ONE LINE → Do NOT parse, return immediately
+            if len(answer_lines) <= 1:
+                response = ChatResponse(
+                    result=final_answer,
+                    data=[],           # No table
+                    route=route,
+                )
+                print("Single-line answer → sending directly to UI")
+    
+                if chat_id:
+                    try:
+                        save_chat_turn(chat_id, user_q, response.result)
+                    except Exception as e:
+                        print(f"[FastAPI] Failed to save chat turn: {e}")
+
+                return response, route
+
+            sql_for_table = sql_result.sql_query
+            if not sql_for_table:
+                sql_for_table = last_ctx.get("last_sql_query") or ""
+                print(f"SQL QUERY was empty, falling back to context SQL: {sql_for_table}")
+            table_dict = build_table_from_sql(sql_for_table)
+            
+            tables: List[TableData] = []
+            if table_dict:
+                tables.append(TableData(
+                columns=table_dict["columns"],
+                values=table_dict["values"]
+            ))
+            else:
+                # 4. FALLBACK: Try to parse the cleaned text into a table
+                parsed_table = _parse_list_to_table_data(final_answer)
+                if parsed_table:
+                    tables.append(parsed_table)
+                    print("Generated table data by parsing LLM text output as a single column list.")
+            # tables: List[TableData] = []
+            # if table_dict is not None:
+            #     tables.append(TableData(**table_dict))
             response = ChatResponse(
-                result=sql_result.final_answer,
+                result=final_answer,
                 data=tables,
                 route=route,
             )
+            print("=== FINAL CHAT RESPONSE FOR UI ===")
+            print(f"Result (Cleaned Answer): {response.result[:70]}...")
+            print(f"Route: {response.route}")
+            print(f"Number of tables in 'data': {len(response.data)}")
+            if response.data:
+                # Print structure of the first table
+                first_table = response.data[0]
+                print(f"First Table Columns: {first_table.columns}")
+                print(f"First Table Row 1: {first_table.values[0] if first_table.values else 'No data rows'}")
+            # --- END VERIFICATION STEP ---
 
             # Persist conversation + context
             if chat_id:
@@ -1151,18 +1373,19 @@ def answer_hospital_query(user_q: str, chat_id: Optional[str] = None) -> "ChatRe
 
                 try:
                     entity_type, patient_ids = infer_entity_and_ids(
-                        sql_result.sql_query,
+                        sql_for_table,
                         table_dict,
                     )
                     update_last_context(
                         chat_id=chat_id,
                         entity_type=entity_type,
-                        sql_query=sql_result.sql_query,
+                        sql_query=sql_for_table,
                         patient_ids=patient_ids,
                     )
                 except Exception as e:
                     print(f"[FastAPI] Failed to update last context: {e}")
-
+            print("=== SQL AGENT RESPONSE SENT TO UI ===")
+            print(response.model_dump_json(indent=2))
             return response,route
         except Exception as e:
             # ✅ NEW: try to salvage the natural-language answer from parsing errors
@@ -1371,6 +1594,7 @@ def chat_endpoint(req: ChatRequest):
         cursor.close()
         conn.close()
     return ChatResponse(
+        chat_id=chat_id,
     result=response.result,
     data=response.data,
     route=route
@@ -1588,3 +1812,79 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    
+    
+    
+    
+    
+    
+    
+#     # ...
+# #bdskjgnklnhglsfk;g
+# def _parse_list_to_table_data(cleaned_text: str) -> dict:
+#     """
+#     Parse ANY text format into multi-column table:
+#     "- Christopher Cain - 2020-02-06 - 2442 Mary Loop..." 
+#     → ANY number of columns detected automatically!
+    
+#     Returns:
+#     {
+#       "columns": ["patientname", "birth_date", "address", "phone", ...],
+#       "values": [["Christopher Cain", "2020-02-06", "2442 Mary Loop...", ...]]
+#     }
+#     """
+#     lines = cleaned_text.strip().split('\n')
+    
+#     # Filter headers/empty lines
+#     data_lines = [
+#         line.strip() 
+#         for line in lines 
+#         if line.strip() and not (
+#             line.strip().lower().startswith('the names of') or 
+#             line.strip().lower().startswith('a list of') or 
+#             line.strip().lower().endswith(':')
+#         )
+#     ]
+    
+#     if not data_lines:
+#         return {"columns": ["Value"], "values": [[cleaned_text]]}
+
+#     # DYNAMIC COLUMN DETECTION - Find max columns across all rows
+#     max_cols = 0
+#     temp_rows = []
+#     for line in data_lines:
+#         clean_line = line.strip('- ').strip()
+#         parts = [p.strip() for p in clean_line.split('-') if p.strip()]
+#         if parts:
+#             temp_rows.append(parts)
+#             max_cols = max(max_cols, len(parts))
+    
+#     if not temp_rows:
+#         return {"columns": ["Value"], "values": [[line] for line in data_lines]}
+
+#     # Pad shorter rows to max_cols
+#     parsed_rows = []
+#     for row in temp_rows:
+#         padded_row = row + [""] * (max_cols - len(row))
+#         parsed_rows.append(padded_row[:max_cols])  # Trim to max_cols
+
+#     if not parsed_rows:
+#         return {"columns": ["Value"], "values": [[line] for line in data_lines]}
+
+#     # ✅ AUTO-GENERATE COLUMN NAMES
+#     columns = []
+#     for i in range(max_cols):
+#         if i == 0:
+#             columns.append("patientname")
+#         elif i == 1 and any(len(p) <= 10 and p[0].isdigit() for p in [r[i] for r in parsed_rows[:3]]):
+#             columns.append("birth_date")
+#         elif i == 2:
+#             columns.append("address")
+#         else:
+#             columns.append(f"column_{i+1}")
+
+#     return {
+#         "columns": columns,
+#         "values": parsed_rows
+#     }
